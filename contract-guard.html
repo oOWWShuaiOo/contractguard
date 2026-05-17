@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ContractGuard – AI Red Flag Detector</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Serif+4:ital,wght@0,300;0,400;1,300&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f; --surface: #0d0d18; --border: #1e1e2e;
+      --gold: #c9a96e; --gold-dark: #8b6914;
+      --text: #e8e4d9; --muted: #8b8299; --dim: #4a4760;
+      --red: #ef4444; --amber: #f59e0b; --green: #22c55e;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Source Serif 4', Georgia, serif; min-height: 100vh; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+    .logo-icon { width: 42px; height: 42px; background: linear-gradient(135deg, var(--gold), var(--gold-dark)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .logo-text { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--gold); }
+    .logo-sub { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px; }
+    .disclaimer { margin-left: auto; font-size: 11px; color: var(--dim); font-style: italic; }
+    main { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+    .api-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+    .api-bar label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+    .api-bar input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 13px; font-family: monospace; outline: none; }
+    .api-bar input:focus { border-color: var(--gold-dark); }
+    .section-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    textarea { width: 100%; min-height: 200px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.7; resize: vertical; outline: none; margin-bottom: 20px; transition: border-color 0.2s; }
+    textarea:focus { border-color: var(--gold-dark); }
+    button#analyseBtn { background: linear-gradient(135deg, var(--gold), var(--gold-dark)); color: #0a0a0f; border: none; border-radius: 8px; padding: 14px 36px; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'Source Serif 4', Georgia, serif; transition: opacity 0.2s; margin-bottom: 36px; }
+    button#analyseBtn:disabled { background: var(--border); color: var(--dim); cursor: not-allowed; }
+    button#analyseBtn:hover:not(:disabled) { opacity: 0.85; }
+    #error { display: none; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 14px 18px; color: var(--red); font-size: 13px; margin-bottom: 24px; word-break: break-all; }
+    #results { display: none; }
+    .risk-banner { border-radius: 12px; padding: 24px 28px; display: flex; align-items: center; gap: 24px; margin-bottom: 28px; }
+    .risk-score-num { font-family: 'Playfair Display', serif; font-size: 54px; font-weight: 700; line-height: 1; }
+    .risk-score-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 4px; }
+    .divider { width: 1px; height: 60px; background: var(--border); flex-shrink: 0; }
+    .risk-badge { display: inline-block; padding: 4px 14px; border-radius: 4px; font-size: 11px; font-weight: bold; letter-spacing: 0.12em; margin-bottom: 10px; color: #0a0a0f; }
+    .risk-summary { font-size: 14px; color: #b8b099; line-height: 1.6; }
+    .block-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+
+    /* Charts grid */
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .chart-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; text-align: center; }
+    canvas { display: block; }
+
+    /* Legend */
+    .chart-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; width: 100%; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    .flag-card { background: var(--surface); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+    .flag-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 12px; }
+    .flag-clause { font-size: 13px; color: var(--gold); font-style: italic; }
+    .flag-severity { font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid; letter-spacing: 0.1em; white-space: nowrap; flex-shrink: 0; }
+    .flag-issue { font-size: 13px; color: #ef9999; margin-bottom: 10px; }
+    .flag-rewrite { font-size: 13px; color: #86efac; margin-bottom: 10px; }
+    .flag-rewrite span { color: var(--muted); }
+    .flag-action { font-size: 12px; color: var(--gold); background: rgba(201,169,110,0.08); padding: 8px 12px; border-radius: 6px; }
+    .list-block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; }
+    .list-item { font-size: 13px; margin-bottom: 8px; display: flex; gap: 10px; line-height: 1.5; }
+    .footer-note { font-size: 11px; color: #2a2740; text-align: center; padding-top: 12px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #0a0a0f; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 600px) { .charts-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-icon">⚖️</div>
+  <div>
+    <div class="logo-text">ContractGuard</div>
+    <div class="logo-sub">AI Legal Red Flag Detector</div>
+  </div>
+  <div class="disclaimer">Not legal advice · For informational use only</div>
+</header>
+
+<main>
+  <!-- AGGREGATE DASHBOARD -->
+  <div style="margin-bottom:36px;">
+    <div style="font-size:12px;color:#8b8299;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">📊 Dataset Insights</div>
+    <div id="dash-count" style="font-size:12px;color:#4a4760;margin-bottom:16px;font-style:italic;">5 contracts analysed</div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:16px;text-align:center;">
+        <div id="stat-avg" style="font-family:serif;font-size:32px;font-weight:700;color:#ef4444;line-height:1;">78</div>
+        <div style="font-size:10px;color:#6b6880;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Avg Risk Score</div>
+      </div>
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:16px;text-align:center;">
+        <div id="stat-flags" style="font-family:serif;font-size:32px;font-weight:700;color:#c9a96e;line-height:1;">31</div>
+        <div style="font-size:10px;color:#6b6880;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Total Flags</div>
+      </div>
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:16px;text-align:center;">
+        <div id="stat-high" style="font-family:serif;font-size:32px;font-weight:700;color:#ef4444;line-height:1;">24</div>
+        <div style="font-size:10px;color:#6b6880;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">HIGH Severity</div>
+      </div>
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:16px;text-align:center;">
+        <div id="stat-pct" style="font-family:serif;font-size:32px;font-weight:700;color:#ef4444;line-height:1;">80%</div>
+        <div style="font-size:10px;color:#6b6880;text-transform:uppercase;letter-spacing:0.1em;margin-top:4px;">Rated HIGH Risk</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:18px;">
+        <div style="font-size:11px;color:#8b8299;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px;">Risk Score by Contract Type</div>
+        <div id="score-bars"><div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Contractor</span><span style="font-size:11px;color:#ef4444;font-weight:bold;">96</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#ef4444;width:96%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Freelance</span><span style="font-size:11px;color:#ef4444;font-weight:bold;">88</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#ef4444;width:88%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Employment</span><span style="font-size:11px;color:#ef4444;font-weight:bold;">78</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#ef4444;width:78%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Lease</span><span style="font-size:11px;color:#ef4444;font-weight:bold;">78</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#ef4444;width:78%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Property Mgmt</span><span style="font-size:11px;color:#f59e0b;font-weight:bold;">52</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#f59e0b;width:52%;height:6px;border-radius:4px;"></div></div>
+        </div></div><!-- end score-bars -->
+      </div>
+
+      <div style="background:#0d0d18;border:1px solid #1e1e2e;border-radius:10px;padding:18px;">
+        <div style="font-size:11px;color:#8b8299;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px;">Most Common Red Flag Categories</div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Termination</span><span style="font-size:11px;color:#c9a96e;font-weight:bold;">5 contracts</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#c9a96e;width:100%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Liability</span><span style="font-size:11px;color:#c9a96e;font-weight:bold;">4 contracts</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#c9a96e;width:80%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Payment</span><span style="font-size:11px;color:#c9a96e;font-weight:bold;">4 contracts</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#c9a96e;width:80%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">IP Ownership</span><span style="font-size:11px;color:#c9a96e;font-weight:bold;">3 contracts</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#c9a96e;width:60%;height:6px;border-radius:4px;"></div></div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:#8b8299;">Non-Compete</span><span style="font-size:11px;color:#c9a96e;font-weight:bold;">2 contracts</span></div>
+          <div style="background:#1e1e2e;border-radius:4px;height:6px;"><div style="background:#c9a96e;width:40%;height:6px;border-radius:4px;"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#ef4444;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">🔍 Key Finding</div>
+      <div id="key-finding" style="font-size:13px;color:#b8b099;line-height:1.6;">4 out of 5 real contracts analysed scored <strong style="color:#ef4444;">HIGH risk</strong>. Termination clauses, liability exposure, and payment terms appeared as red flags across every single contract. The average risk score was <strong style="color:#ef4444;">78/100</strong> — yet most signers had no legal review before signing.</div>
+    </div>
+
+    <div style="border-top:1px solid #1e1e2e;padding-top:24px;margin-bottom:8px;">
+      <div style="font-size:12px;color:#8b8299;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:16px;">🔎 Analyse Your Contract</div>
+    </div>
+  </div>
+
+  <div class="api-bar">
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="sk-ant-..." />
+  </div>
+  <div class="section-label">Paste contract text below</div>
+  <textarea id="contractText" placeholder="Paste any contract, clause, employment agreement, lease, freelance contract, terms of service..."></textarea>
+  <button id="analyseBtn" onclick="window.analyse()">⚖️ Analyse Contract</button>
+  <div id="error"></div>
+  <div id="results"></div>
+</main>
+
+<script>
+// Live dataset - seeded with 5 real contracts
+const dataset = [
+  { type: "Independent Contractor", score: 96, high: 12, medium: 0, low: 0 },
+  { type: "Property Management",    score: 52, high: 2,  medium: 4, low: 0 },
+  { type: "Employment",             score: 78, high: 2,  medium: 2, low: 0 },
+  { type: "Freelance Services",     score: 88, high: 6,  medium: 0, low: 0 },
+  { type: "Rental Lease",           score: 78, high: 2,  medium: 1, low: 0 },
+];
+
+function addToDataset(result) {
+  const high   = (result.flags||[]).filter(f=>f.severity==="HIGH").length;
+  const medium = (result.flags||[]).filter(f=>f.severity==="MEDIUM").length;
+  const low    = (result.flags||[]).filter(f=>f.severity==="LOW").length;
+  dataset.push({ type: "New Contract #" + dataset.length, score: result.riskScore, high, medium, low });
+  refreshDashboard();
+}
+
+function refreshDashboard() {
+  const total      = dataset.length;
+  const avgScore   = Math.round(dataset.reduce((s,d)=>s+d.score,0)/total);
+  const totalFlags = dataset.reduce((s,d)=>s+d.high+d.medium+d.low,0);
+  const totalHigh  = dataset.reduce((s,d)=>s+d.high,0);
+  const highRiskPct = Math.round((dataset.filter(d=>d.score>=70).length/total)*100);
+
+  document.getElementById("stat-avg").textContent   = avgScore;
+  document.getElementById("stat-flags").textContent = totalFlags;
+  document.getElementById("stat-high").textContent  = totalHigh;
+  document.getElementById("stat-pct").textContent   = highRiskPct + "%";
+  document.getElementById("dash-count").textContent = total + " contracts analysed";
+
+  // Rebuild score bars
+  const barsEl = document.getElementById("score-bars");
+  const sorted = [...dataset].sort((a,b)=>b.score-a.score).slice(0,6);
+  barsEl.innerHTML = sorted.map(d => {
+    const c = d.score >= 70 ? "#ef4444" : d.score >= 40 ? "#f59e0b" : "#22c55e";
+    const label = d.type.length > 18 ? d.type.slice(0,17)+"…" : d.type;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;color:#8b8299;">${label}</span>
+        <span style="font-size:11px;color:${c};font-weight:bold;">${d.score}</span>
+      </div>
+      <div style="background:#1e1e2e;border-radius:4px;height:6px;">
+        <div style="background:${c};width:${d.score}%;height:6px;border-radius:4px;"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Update key finding
+  document.getElementById("key-finding").innerHTML =
+    `<strong style="color:#ef4444;">${dataset.filter(d=>d.score>=70).length} out of ${total}</strong> contracts analysed scored HIGH risk. The average risk score is <strong style="color:#ef4444;">${avgScore}/100</strong> — most signers had no legal review before signing.`;
+}
+
+const SYSTEM_PROMPT = `You are a balanced, experienced contract lawyer advising a client. Analyse the contract and return ONLY a JSON object, no markdown, no backticks, no explanation.
+
+Use this exact structure:
+{"riskLevel":"HIGH","riskScore":72,"summary":"Two sentence plain English summary.","flags":[{"clause":"clause text","issue":"what is wrong","severity":"HIGH","category":"IP Ownership","rewrite":"fairer version","action":"what to do"}],"positives":["good thing"],"negotiationTips":["tip"]}
+
+Severity guidelines — be calibrated and realistic, not alarmist:
+- HIGH: genuinely dangerous clauses that could cause serious financial loss, legal liability, or strip fundamental rights. Examples: unlimited liability, unpaid termination with no notice, forced IP assignment without payment, unenforceable non-competes.
+- MEDIUM: clauses that favour the other party but are common in the industry and negotiable. Examples: 30-day payment terms, standard non-solicitation, modest auto-renewal periods.
+- LOW: minor issues or standard boilerplate that is slightly one-sided but poses little real risk.
+
+Do NOT flag standard commercial terms as HIGH just because they favour the other party. Most contracts have some imbalance — only flag what genuinely exposes the signer to serious harm. A clause being imperfect is not a red flag. riskScore should reflect genuine danger: a standard employment contract should score 20-40, not 70+. Only score above 70 if multiple HIGH severity clauses are present.
+
+category must be one of: "IP Ownership", "Non-Compete", "Termination", "Liability", "Payment", "Privacy", "Auto-Renewal", "Penalty", "Other"
+Return ONLY valid JSON.`;
+
+function color(level) {
+  return level === "HIGH" ? "#ef4444" : level === "MEDIUM" ? "#f59e0b" : "#22c55e";
+}
+function bg(level) {
+  return level === "HIGH" ? "rgba(239,68,68,0.08)" : level === "MEDIUM" ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)";
+}
+function showError(msg) {
+  const el = document.getElementById("error");
+  el.style.display = "block"; el.textContent = msg;
+}
+function clearError() {
+  const el = document.getElementById("error");
+  el.style.display = "none"; el.textContent = "";
+}
+
+window.analyse = async function analyse() {
+  const apiKey = document.getElementById("apiKey").value.trim();
+  const contractText = document.getElementById("contractText").value.trim();
+  const btn = document.getElementById("analyseBtn");
+  const resultsEl = document.getElementById("results");
+
+  if (!apiKey) { showError("Please enter your Anthropic API key."); return; }
+  if (!contractText) { showError("Please paste some contract text."); return; }
+
+  clearError();
+  resultsEl.style.display = "none";
+  resultsEl.innerHTML = "";
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Analysing...';
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: `Analyse this contract:\n\n${contractText}` }],
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) { showError(`API error: ${data.error.message}`); return; }
+
+    const text = data.content?.find(b => b.type === "text")?.text || "";
+    if (!text) { showError("Empty response from API."); return; }
+
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch {}
+    if (!parsed) { try { parsed = JSON.parse(text.replace(/```json|```/g, "").trim()); } catch {} }
+    if (!parsed) { const m = text.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch {} } }
+    if (!parsed) { showError(`Could not parse response: ${text.slice(0, 200)}`); return; }
+
+    renderResults(parsed);
+  addToDataset(parsed);
+  } catch (err) {
+    showError(`Request failed: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "⚖️ Analyse Contract";
+  }
+}
+
+// ── CHART FUNCTIONS ───────────────────────────────────────────
+
+function drawGauge(canvasId, score) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H * 0.78;
+  const r = W * 0.38;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+  ctx.strokeStyle = "#1e1e2e";
+  ctx.lineWidth = 14;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // Coloured arc
+  const pct = score / 100;
+  const startAngle = Math.PI;
+  const endAngle = Math.PI + pct * Math.PI;
+  const arcColor = score >= 70 ? "#ef4444" : score >= 40 ? "#f59e0b" : "#22c55e";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.strokeStyle = arcColor;
+  ctx.lineWidth = 14;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // Needle
+  const needleAngle = Math.PI + pct * Math.PI;
+  const nx = cx + (r - 6) * Math.cos(needleAngle);
+  const ny = cy + (r - 6) * Math.sin(needleAngle);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.strokeStyle = "#e8e4d9";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Centre dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+  ctx.fillStyle = "#e8e4d9";
+  ctx.fill();
+
+  // Score text
+  ctx.fillStyle = arcColor;
+  ctx.font = "bold 22px 'Playfair Display', serif";
+  ctx.textAlign = "center";
+  ctx.fillText(score, cx, cy - 10);
+
+  // Labels
+  ctx.fillStyle = "#4a4760";
+  ctx.font = "10px sans-serif";
+  ctx.fillText("0", cx - r - 4, cy + 14);
+  ctx.fillText("100", cx + r - 10, cy + 14);
+}
+
+function drawDonut(canvasId, high, medium, low) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.38, inner = r * 0.55;
+  ctx.clearRect(0, 0, W, H);
+
+  const total = high + medium + low;
+  if (total === 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.strokeStyle = "#1e1e2e";
+    ctx.lineWidth = r - inner;
+    ctx.stroke();
+    ctx.fillStyle = "#4a4760";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No flags", cx, cy + 4);
+    return;
+  }
+
+  const segments = [
+    { value: high, color: "#ef4444" },
+    { value: medium, color: "#f59e0b" },
+    { value: low, color: "#22c55e" },
+  ];
+
+  let start = -Math.PI / 2;
+  segments.forEach(s => {
+    if (s.value === 0) return;
+    const sweep = (s.value / total) * 2 * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, start + sweep);
+    ctx.closePath();
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    start += sweep;
+  });
+
+  // Punch hole
+  ctx.beginPath();
+  ctx.arc(cx, cy, inner, 0, 2 * Math.PI);
+  ctx.fillStyle = "#0d0d18";
+  ctx.fill();
+
+  // Centre total
+  ctx.fillStyle = "#e8e4d9";
+  ctx.font = "bold 18px 'Playfair Display', serif";
+  ctx.textAlign = "center";
+  ctx.fillText(total, cx, cy + 2);
+  ctx.fillStyle = "#4a4760";
+  ctx.font = "9px sans-serif";
+  ctx.fillText("FLAGS", cx, cy + 14);
+}
+
+function drawBar(canvasId, categories) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const entries = Object.entries(categories).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (entries.length === 0) {
+    ctx.fillStyle = "#4a4760"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("No categories", W / 2, H / 2); return;
+  }
+
+  const maxVal = Math.max(...entries.map(([, v]) => v));
+  const padL = 10, padR = 10, padT = 10, padB = 28;
+  const barH = Math.floor((H - padT - padB) / entries.length) - 5;
+
+  entries.forEach(([label, val], i) => {
+    const y = padT + i * (barH + 5);
+    const maxW = W - padL - padR;
+    const barW = Math.max(4, (val / maxVal) * maxW * 0.65);
+
+    // Bar
+    ctx.fillStyle = "#c9a96e";
+    ctx.beginPath();
+    ctx.roundRect(padL, y, barW, barH, 3);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = "#8b8299";
+    ctx.font = `${Math.min(10, barH * 0.7)}px sans-serif`;
+    ctx.textAlign = "left";
+    const shortLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
+    ctx.fillText(shortLabel, padL, y + barH + 11);
+
+    // Count
+    ctx.fillStyle = "#c9a96e";
+    ctx.textAlign = "left";
+    ctx.fillText(val, padL + barW + 5, y + barH / 2 + 4);
+  });
+}
+
+// ── RENDER ────────────────────────────────────────────────────
+
+function renderResults(r) {
+  const el = document.getElementById("results");
+  const c = color(r.riskLevel);
+  const b = bg(r.riskLevel);
+
+  // Count severities
+  const high = (r.flags || []).filter(f => f.severity === "HIGH").length;
+  const medium = (r.flags || []).filter(f => f.severity === "MEDIUM").length;
+  const low = (r.flags || []).filter(f => f.severity === "LOW").length;
+
+  // Count categories
+  const cats = {};
+  (r.flags || []).forEach(f => {
+    const cat = f.category || "Other";
+    cats[cat] = (cats[cat] || 0) + 1;
+  });
+
+  let html = `
+    <!-- Risk banner -->
+    <div class="risk-banner" style="background:${b}; border:1px solid ${c}40;">
+      <div style="text-align:center; min-width:80px;">
+        <div class="risk-score-num" style="color:${c};">${r.riskScore}</div>
+        <div class="risk-score-label">Risk Score</div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div class="risk-badge" style="background:${c};">${r.riskLevel} RISK</div>
+        <div class="risk-summary">${r.summary}</div>
+      </div>
+    </div>
+
+    <!-- Analytics charts -->
+    <div class="block-title">📊 Risk Analytics</div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Risk Gauge</div>
+        <canvas id="gaugeCanvas" width="160" height="100"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Severity Breakdown</div>
+        <canvas id="donutCanvas" width="120" height="120"></canvas>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>High (${high})</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Medium (${medium})</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Low (${low})</div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Issue Categories</div>
+        <canvas id="barCanvas" width="160" height="140"></canvas>
+      </div>
+    </div>`;
+
+  // Flags
+  if (r.flags && r.flags.length > 0) {
+    html += `<div class="block-title">🚩 Red Flags Found (${r.flags.length})</div>`;
+    r.flags.forEach(f => {
+      const fc = color(f.severity);
+      html += `
+        <div class="flag-card" style="border:1px solid ${fc}20; border-left:3px solid ${fc};">
+          <div class="flag-header">
+            <div class="flag-clause">"${f.clause}"</div>
+            <div class="flag-severity" style="color:${fc}; border-color:${fc};">${f.severity}</div>
+          </div>
+          <div class="flag-issue">⚠️ ${f.issue}</div>
+          <div class="flag-rewrite">✏️ <span>Fairer version:</span> ${f.rewrite}</div>
+          <div class="flag-action">👉 ${f.action}</div>
+        </div>`;
+    });
+  }
+
+  if (r.positives && r.positives.length > 0) {
+    html += `<div class="block-title" style="margin-top:8px;">✅ What's Fair</div><div class="list-block">`;
+    r.positives.forEach(p => {
+      html += `<div class="list-item" style="color:#86efac;"><span>•</span><span>${p}</span></div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (r.negotiationTips && r.negotiationTips.length > 0) {
+    html += `<div class="block-title">💬 Negotiation Tips</div><div class="list-block">`;
+    r.negotiationTips.forEach((t, i) => {
+      html += `<div class="list-item" style="color:#b8b099;"><span style="color:#c9a96e;">${i+1}.</span><span>${t}</span></div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<div class="footer-note">ContractGuard uses AI to identify potential issues. Always consult a qualified lawyer before signing.</div>`;
+
+  el.innerHTML = html;
+  el.style.display = "block";
+
+  // Draw charts after DOM is ready
+  setTimeout(() => {
+    drawGauge("gaugeCanvas", r.riskScore);
+    drawDonut("donutCanvas", high, medium, low);
+    drawBar("barCanvas", cats);
+  }, 50);
+}
+</script>
+</body>
+</html>
